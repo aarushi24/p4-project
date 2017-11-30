@@ -31,70 +31,67 @@ field_list ipv4_checksum_list {
 }
 
 field_list_calculation ipv4_checksum {
-    input {
-        ipv4_checksum_list;
-    }
-    algorithm : csum16;
-    output_width : 16;
+    	input {
+        	ipv4_checksum_list;
+    	}
+    	algorithm : csum16;
+    	output_width : 16;
 }
 
 calculated_field ipv4.hdrChecksum  {
-    verify ipv4_checksum;
-    update ipv4_checksum;
+    	verify ipv4_checksum;
+    	update ipv4_checksum;
 }
 
 action _drop() {
-    drop();
+    	drop();
 }
 
 header_type custom_metadata_t {
-    fields {
-        nhop_ipv4: 32;
-	count_pkt : 16;
-	index_ip : 32;
-    }
+    	fields {
+        	nhop_ipv4: 32;
+    	}
 }
 
 metadata custom_metadata_t custom_metadata;
 
-register counter_reg {
-	width : 16;
-	instance_count : 16;
+header_type meta_t {
+	fields {
+		meter_tag : 32;
+	}
 }
 
+metadata meta_t meter_meta;
+
 action set_nhop(nhop_ipv4, port) {
-    modify_field(custom_metadata.nhop_ipv4, nhop_ipv4);
-    modify_field(standard_metadata.egress_spec, port);
-    add_to_field(ipv4.ttl, -1);
+    	modify_field(custom_metadata.nhop_ipv4, nhop_ipv4);
+    	modify_field(standard_metadata.egress_spec, port);
+    	add_to_field(ipv4.ttl, -1);
 }
 
 action set_dmac(dmac) {
-    modify_field(ethernet.dstAddr, dmac);
+    	modify_field(ethernet.dstAddr, dmac);
 }
 
-counter all_counter {
-    type: packets;
-    static: all_count_table;
-    instance_count: 1024;
+meter ip_meter {
+   	type: packets;
+   	static: meter_table;
+    	instance_count: 1024;
 }
 
-action all_count_action(idx) {
-	count(all_counter, idx);
-	modify_field(custom_metadata.index_ip, idx);
-	register_read(custom_metadata.count_pkt, counter_reg, custom_metadata.index_ip);
-	add_to_field(custom_metadata.count_pkt, 1);
-	register_write(counter_reg, custom_metadata.index_ip, custom_metadata.count_pkt);
+action meter_action(index) {
+	execute_meter(ip_meter, index, meter_meta.meter_tag);
 }
 
-table all_count_table {
-    reads {
-        ipv4.srcAddr : lpm;
-    }
-    actions {
-        all_count_action;
-        _drop;
-    }
-    size : 1024;
+table meter_table {
+    	reads {
+		ipv4.srcAddr : lpm;
+    	}
+    	actions {
+        	meter_action;
+        	_drop;
+    	}
+    	size : 1024;
 }
 
 counter ip_src_counter {
@@ -103,13 +100,14 @@ counter ip_src_counter {
     instance_count: 1024;
 }
 
-action count_action(idx) {
-	count(ip_src_counter, idx);
+action count_action(index) {
+        count(ip_src_counter, index);
 }
 
 table count_table {
     reads {
         ipv4.srcAddr : lpm;
+	meter_meta.meter_tag : exact;
     }
     actions {
         count_action;
@@ -119,51 +117,49 @@ table count_table {
 }
 
 table ipv4_lpm {
-    reads {
-        ipv4.dstAddr : lpm;
-    }
-    actions {
-        set_nhop;
-        _drop;
-    }
-    size: 1024;
+    	reads {
+        	ipv4.dstAddr : lpm;
+    	}
+    	actions {
+        	set_nhop;
+        	_drop;
+    	}
+    	size: 1024;
 }
 
 table forward {
-    reads {
-        custom_metadata.nhop_ipv4 : exact;
-    }
-    actions {
-        set_dmac;
-        _drop;
-    }
-    size: 512;
+    	reads {
+        	custom_metadata.nhop_ipv4 : exact;
+    	}
+    	actions {
+        	set_dmac;
+        	_drop;
+    	}
+    	size: 512;
 }
 
 action rewrite_mac(smac) {
-    modify_field(ethernet.srcAddr, smac);
+    	modify_field(ethernet.srcAddr, smac);
 }
 
 table send_frame {
-    reads {
-        standard_metadata.egress_port: exact;
-    }
-    actions {
-        rewrite_mac;
-        _drop;
-    }
-    size: 256;
+    	reads {
+        	standard_metadata.egress_port: exact;
+    	}
+    	actions {
+        	rewrite_mac;
+        	_drop;
+    	}
+    	size: 256;
 }
 
 control ingress {
-	apply(all_count_table);
-	if (custom_metadata.count_pkt > 100) {
-		apply(count_table);
-	}
+    	apply(meter_table);
 	apply(ipv4_lpm);
-	apply(forward);
+  	apply(forward);
+	apply(count_table);
 }
 
 control egress {
-    apply(send_frame);
+    	apply(send_frame);
 }
