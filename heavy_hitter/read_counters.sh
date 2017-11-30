@@ -20,10 +20,10 @@ source $THIS_DIR/../env.sh
 
 CLI_PATH=$BMV2_PATH/targets/simple_switch/sswitch_CLI
 
-echo "displaying total count"
-echo "counter_read all_counter 0" | $CLI_PATH heavy_hitter.json 22222
+#echo "displaying total count"
+#echo "counter_read all_counter 0" | $CLI_PATH heavy_hitter.json 22222
 #echo
-#echo "displaying counters for h1"
+echo "displaying counters for h1"
 echo "counter_read ip_src_counter 0" | $CLI_PATH heavy_hitter.json 22222
 echo
 echo "displaying counters for h2"
