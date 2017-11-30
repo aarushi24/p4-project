@@ -50,10 +50,17 @@ action _drop() {
 header_type custom_metadata_t {
     fields {
         nhop_ipv4: 32;
+	count_pkt : 16;
+	index_ip : 32;
     }
 }
 
 metadata custom_metadata_t custom_metadata;
+
+register counter_reg {
+	width : 16;
+	instance_count : 16;
+}
 
 action set_nhop(nhop_ipv4, port) {
     modify_field(custom_metadata.nhop_ipv4, nhop_ipv4);
@@ -65,6 +72,31 @@ action set_dmac(dmac) {
     modify_field(ethernet.dstAddr, dmac);
 }
 
+counter all_counter {
+    type: packets;
+    static: all_count_table;
+    instance_count: 1024;
+}
+
+action all_count_action(idx) {
+	count(all_counter, idx);
+	modify_field(custom_metadata.index_ip, idx);
+	register_read(custom_metadata.count_pkt, counter_reg, custom_metadata.index_ip);
+	add_to_field(custom_metadata.count_pkt, 1);
+	register_write(counter_reg, custom_metadata.index_ip, custom_metadata.count_pkt);
+}
+
+table all_count_table {
+    reads {
+        ipv4.srcAddr : lpm;
+    }
+    actions {
+        all_count_action;
+        _drop;
+    }
+    size : 1024;
+}
+
 counter ip_src_counter {
     type: packets;
     static: count_table;
@@ -72,7 +104,7 @@ counter ip_src_counter {
 }
 
 action count_action(idx) {
-    count(ip_src_counter, idx);
+	count(ip_src_counter, idx);
 }
 
 table count_table {
@@ -124,9 +156,12 @@ table send_frame {
 }
 
 control ingress {
-    apply(count_table);
-    apply(ipv4_lpm);
-    apply(forward);
+	apply(all_count_table);
+	if (custom_metadata.count_pkt > 100) {
+		apply(count_table);
+	}
+	apply(ipv4_lpm);
+	apply(forward);
 }
 
 control egress {
