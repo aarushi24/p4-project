@@ -17,6 +17,7 @@
 from scapy.all import Ether, IP, sendp, get_if_hwaddr, get_if_list, TCP, Raw
 import sys
 import random, string
+import time
 
 def randomword(max_length):
     length = random.randint(1, max_length)
@@ -82,6 +83,7 @@ def send_random_traffic(dst):
             print p.show()
             sendp(p, iface = "eth0")
             total_pkts += 1
+	    time.sleep(1)
     print "Sent %s packets in total" % total_pkts
 
 if __name__ == '__main__':
