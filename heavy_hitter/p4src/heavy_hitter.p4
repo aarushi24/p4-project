@@ -73,6 +73,27 @@ action set_dmac(dmac) {
     	modify_field(ethernet.dstAddr, dmac);
 }
 
+counter incoming_counter {
+	type: packets;
+	static: incoming_table;
+	instance_count: 1024;
+}
+
+action count_incoming(index) {
+	count(incoming_counter, index);
+}
+
+table incoming_table {
+	reads {
+		ipv4.srcAddr: lpm;
+	}
+	actions {
+		count_incoming;
+		_drop;
+	}
+	size: 1024;
+}
+
 meter ip_meter {
    	type: packets;
    	static: meter_table;
@@ -154,7 +175,8 @@ table send_frame {
 }
 
 control ingress {
-    	apply(meter_table);
+    	apply(incoming_table);
+	apply(meter_table);
 	apply(ipv4_lpm);
   	apply(forward);
 	apply(count_table);
